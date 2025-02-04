@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>File Uploading</title>
+  </head>
+  <body>
+    <h1>File Uploading</h1>
+    <form id="fileForm" enctype="multipart/form-data">
+      <input type="file" name="file" onchange="toggleAnalyzeButton()" />
+      <select name="fileType">
+        <option value="trip-description">Trip Description</option>
+        <option value="envelope">Envelope</option>
+        <option value="vendor-offer">Vendor Offer</option>
+      </select>
+      <button
+        type="button"
+        id="analyzeButton"
+        style="display: none"
+        onclick="analyzeFile()"
+      >
+        Analyze File
+      </button>
+    </form>
+    <div id="result" style="margin-top: 50px"></div>
+
+    <script>
+      function toggleAnalyzeButton() {
+        const fileInput = document.querySelector(
+          '#fileForm input[name="file"]'
+        );
+        const analyzeButton = document.getElementById("analyzeButton");
+
+        if (fileInput.value) {
+          analyzeButton.style.display = "inline";
+        } else {
+          analyzeButton.style.display = "none";
+        }
+      }
+
+      async function analyzeFile() {
+        const fileForm = document.getElementById("fileForm");
+        const formData = new FormData(fileForm);
+
+        try {
+          document.getElementById("result").innerHTML = "<p>Loading...</p>";
+          const response = await fetch("/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          const result = await response.json();
+          let formattedText = result.message.replace(/\n/g, "</p><p>");
+
+          // Wrap the entire text in paragraph tags
+          formattedText = "<p>" + formattedText + "</p>";
+
+          // Insert the formatted text into the desired HTML element
+          document.getElementById("result").innerHTML = formattedText;
+        } catch (error) {
+          console.error("Error analyzing file:", error);
+          document.getElementById("result").innerHTML =
+            "Error analyzing file: " + error.message;
+        }
+      }
+    </script>
+  </body>
+</html>
