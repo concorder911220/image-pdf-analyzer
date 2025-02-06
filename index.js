@@ -4,7 +4,6 @@ import { OpenAI } from "openai";
 import { promises as _fs } from "node:fs";
 import fs from "fs";
 import multer from "multer";
-import tesseract from "tesseract.js";
 import path from "path";
 import { pdf } from "pdf-to-img";
 import { fileURLToPath } from "url";
@@ -34,47 +33,29 @@ async function processPdf(filePath) {
   let extractedText = "";
 
   for await (const image of document) {
-    const imagePath = `page${counter}.png`;
+    const imagePath = `./uploads/page${counter}.png`;
     console.log("image is ", image.length);
 
     await _fs.writeFile(imagePath, image);
-    const result = await tesseract.recognize(imagePath, "eng", {
-      logger: (m) => console.log(m),
-    });
-    extractedText += result.data.text + "\n";
-    fs.unlinkSync(imagePath);
-    counter++;
+    return imagePath;
   }
-
-  return extractedText;
 }
 
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
-    const filePath = req.file.path;
-    let extractedText = "";
-
+    let filePath = req.file.path;
     if (req.file.mimetype === "application/pdf") {
       // Process PDF file
-      extractedText = await processPdf(filePath);
-    } else {
-      // Process image file
-      const fileContent = fs.readFileSync(filePath);
-
-      console.log("file content is ", fileContent);
-      const result = await tesseract.recognize(fileContent, "eng", {
-        logger: (m) => console.log(m),
-      });
-      extractedText = result.data.text;
+      filePath = await processPdf(filePath);
     }
-
-    console.log("extracted text is ", extractedText);
+    const imageBase64 = fs.readFileSync(filePath, { encoding: "base64" });
     const fileType = req.body.fileType;
+
     let prompt;
 
     switch (fileType) {
       case "trip-description":
-        prompt = `In this text, it describes about trip description - a flyer with a basic information about the trip. 
+        prompt = `In this file, it describes about trip description - a flyer with a basic information about the trip. 
                 It has title, description, start and end date, itinearay. Order should be title, description, start date, end date, itinearay and should be structured into paragraphs.
 
                 This is sample response: Title: ...
@@ -99,33 +80,46 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
                 - ...
                 ....
-                Please extract those information correctly as originally from this text.:\n\n${extractedText}`;
+                Please extract those information correctly as originally from this image.`;
         break;
       case "envelope":
-        prompt = `In this text, it describes about address. Extract the address information (street, city, postal code) from the following text and order should be street, city, postal code correctly:\n\n${extractedText}`;
+        prompt = `In this file, it describes about address. Extract the address information (street, city, postal code) from the following text and order should be street, city, postal code correctly.`;
         break;
       case "vendor-offer":
-        prompt = `In this text, it describes vendor offer which includes price, conditions, item name, delivery date. 
-                
+        prompt = `In this file, it describes vendor offer which includes price, conditions, item name, delivery date. 
                 Order should be item name, price, conditions and delivery date be structured into paragraphs.
-                Extract correctly the vendor offer details including item name, price, conditions and delivery date from the following text:\n\n${extractedText}`;
+                Extract correctly the vendor offer details including item name, price, conditions and delivery date from the following image.`;
         break;
       default:
-        prompt = `Extract information from the following text:\n\n${extractedText}`;
+        prompt = `Extract information from the following image.`;
         break;
     }
+
     const completion = await openAi.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "user",
-          content: prompt,
+          content: [
+            {
+              type: "text",
+              text: prompt,
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:image/png;base64,${imageBase64}`,
+              },
+            },
+          ],
         },
       ],
     });
 
     res.send({ message: completion.choices[0].message.content });
-  } catch (error) {}
+  } catch (error) {
+    console.log(error);
+  }
 });
 
 app.get("/", (req, res) => {
